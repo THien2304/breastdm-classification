@@ -58,4 +58,34 @@ def load_data(root_path, phase='train', batch_size=32, num_workers=2):
     return loader
 
 if __name__ == '__main__':
-    print("Đang kiểm tra loader...")
+    import argparse
+    # 1. Thiết lập nhận tham số từ Kaggle
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_path', type=str, required=True, help='Đường dẫn tới dataset trên Kaggle')
+    parser.add_argument('--batch_size', type=int, default=8)
+    args = parser.parse_args()
+
+    print(f"🚀 Bắt đầu kiểm tra tại: {args.data_path}")
+
+    try:
+        # 2. Gọi hàm load_data
+        # Chúng ta thử load tập train
+        loader = load_data(args.data_path, phase='train', batch_size=args.batch_size)
+        
+        print(f"📂 Đã tìm thấy các lớp: {loader.dataset.classes}")
+        print(f"🔢 Tổng số ảnh: {len(loader.dataset)}")
+
+        # 3. HÀNH ĐỘNG QUYẾT ĐỊNH: Lấy thử 1 batch ảnh thực tế
+        images, labels = next(iter(loader))
+
+        # 4. Nếu in được dòng này, bạn đã THÀNH CÔNG 100%
+        print("\n" + "="*30)
+        print("✅ KẾT QUẢ: LOAD DATA THÀNH CÔNG!")
+        print(f"📦 Kích thước Tensor ảnh: {images.shape}") # Nên là [8, 3, 224, 224]
+        print(f"🏷️ Nhãn các ảnh trong batch: {labels.tolist()}")
+        print("="*30)
+
+    except FileNotFoundError:
+        print(f"❌ LỖI: Không tìm thấy thư mục 'train' tại {args.data_path}")
+    except Exception as e:
+        print(f"❌ LỖI HỆ THỐNG: {e}")
