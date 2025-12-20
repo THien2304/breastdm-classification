@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 import data_loader
-import Models
+import models
 
 # ---------------- Argument parser ----------------
 parser = argparse.ArgumentParser()
@@ -32,21 +32,21 @@ val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path,
 def build_model(name):
     name = name.lower()
     if name == 'resnet18':
-        return Models.ResNet18(args.num_classes)
+        return models.ResNet18(args.num_classes)
     if name == 'resnet50':
-        return Models.ResNet50(args.num_classes)
+        return models.ResNet50(args.num_classes)
     if name == 'resnet101':
-        return Models.ResNet101(args.num_classes)
+        return models.ResNet101(args.num_classes)
     if name == 'densenet169':
-        return Models.DenseNet169(args.num_classes)
+        return models.DenseNet169(args.num_classes)
     if name == 'densenet201':
-        return Models.DenseNet201(args.num_classes)
+        return models.DenseNet201(args.num_classes)
     if name == 'vgg16':
-        return Models.VGG16(args.num_classes)
+        return models.VGG16(args.num_classes)
     if name == 'senet50':
-        return Models.SENet50(args.num_classes)
+        return models.SENet50(args.num_classes)
     if name == 'resnext101':
-        return Models.ResNeXt101(args.num_classes)
+        return models.ResNeXt101(args.num_classes)
     else:
         raise ValueError("Unsupported model")
 
