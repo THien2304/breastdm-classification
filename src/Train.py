@@ -5,9 +5,8 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
-
 import data_loader
-import models
+import Models
 
 # ---------------- Argument parser ----------------
 parser = argparse.ArgumentParser()
@@ -32,21 +31,21 @@ val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path,
 def build_model(name):
     name = name.lower()
     if name == 'resnet18':
-        return models.ResNet18(args.num_classes)
+        return Models.ResNet18(args.num_classes)
     if name == 'resnet50':
-        return models.ResNet50(args.num_classes)
+        return Models.ResNet50(args.num_classes)
     if name == 'resnet101':
-        return models.ResNet101(args.num_classes)
+        return Models.ResNet101(args.num_classes)
     if name == 'densenet169':
-        return models.DenseNet169(args.num_classes)
+        return Models.DenseNet169(args.num_classes)
     if name == 'densenet201':
-        return models.DenseNet201(args.num_classes)
+        return Models.DenseNet201(args.num_classes)
     if name == 'vgg16':
-        return models.VGG16(args.num_classes)
+        return Models.VGG16(args.num_classes)
     if name == 'senet50':
-        return models.SENet50(args.num_classes)
+        return Models.SENet50(args.num_classes)
     if name == 'resnext101':
-        return models.ResNeXt101(args.num_classes)
+        return Models.ResNeXt101(args.num_classes)
     else:
         raise ValueError("Unsupported model")
 
