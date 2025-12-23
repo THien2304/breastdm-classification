@@ -1,21 +1,16 @@
 
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
-
-import pretrainedmodels.models as premodels
-from pretrainedmodels.models.resnext_features import (
-    resnext101_32x4d_features
-)
-
-
+import timm
 
 # 1. VGG16
 class VGG16(nn.Module):
     def __init__(self, num_classes=2):
-        super(VGG16, self).__init__()
-        model = models.vgg16(pretrained=True)
+        super().__init__()
+        model = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
         self.features = model.features
         self.avgpool = model.avgpool
         self.classifier = nn.Sequential(
@@ -31,22 +26,22 @@ class VGG16(nn.Module):
     def forward(self, x):
         x = self.features(x)
         x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, 1)
         x = self.classifier(x)
         return x
 
 
-# 2. ResNet family
+# 2. ResNet Family
 class ResNet18(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        model = models.resnet18(pretrained=True)
+        model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
         self.backbone = nn.Sequential(*list(model.children())[:-1])
         self.fc = nn.Linear(model.fc.in_features, num_classes)
 
     def forward(self, x):
         x = self.backbone(x)
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
@@ -54,13 +49,13 @@ class ResNet18(nn.Module):
 class ResNet50(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        model = models.resnet50(pretrained=True)
+        model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
         self.backbone = nn.Sequential(*list(model.children())[:-1])
         self.fc = nn.Linear(model.fc.in_features, num_classes)
 
     def forward(self, x):
         x = self.backbone(x)
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
@@ -68,29 +63,31 @@ class ResNet50(nn.Module):
 class ResNet101(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        model = models.resnet101(pretrained=True)
+        model = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V1)
         self.backbone = nn.Sequential(*list(model.children())[:-1])
         self.fc = nn.Linear(model.fc.in_features, num_classes)
 
     def forward(self, x):
         x = self.backbone(x)
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
-# 3. DenseNet
+
+
+# 3. DenseNet Family
 class DenseNet169(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        model = models.densenet169(pretrained=True)
+        model = models.densenet169(weights=models.DenseNet169_Weights.IMAGENET1K_V1)
         self.features = model.features
-        self.fc = nn.Linear(1664, num_classes)
+        self.fc = nn.Linear(model.classifier.in_features, num_classes)
 
     def forward(self, x):
         x = self.features(x)
         x = F.relu(x, inplace=True)
         x = F.adaptive_avg_pool2d(x, (1, 1))
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
@@ -98,9 +95,9 @@ class DenseNet169(nn.Module):
 class DenseNet201(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        model = models.densenet201(pretrained=True)
+        model = models.densenet201(weights=models.DenseNet201_Weights.IMAGENET1K_V1)
         self.features = model.features
-        self.fc = nn.Linear(1920, num_classes)
+        self.fc = nn.Linear(model.classifier.in_features, num_classes)
         self.feature_map = None  # for CAM
 
     def forward(self, x):
@@ -108,7 +105,7 @@ class DenseNet201(nn.Module):
         x = F.relu(x, inplace=True)
         self.feature_map = x
         x = F.adaptive_avg_pool2d(x, (1, 1))
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
@@ -116,56 +113,38 @@ class DenseNet201(nn.Module):
         return self.feature_map
 
 
-
 # 4. ResNeXt101
 class ResNeXt101(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        self.features = resnext101_32x4d_features
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(2048, num_classes)
+        model = timm.create_model(
+            "resnext101_32x4d",
+            pretrained=True
+        )
+        self.backbone = nn.Sequential(*list(model.children())[:-1])
+        self.fc = nn.Linear(model.fc.in_features, num_classes)
 
     def forward(self, x):
-        x = self.features(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
+        x = self.backbone(x)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
 
-
-# 5. SENet
+# 5. SENet50 
 class SENet50(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        model = premodels.se_resnet50()
-        self.features = nn.Sequential(
-            model.layer0,
-            model.layer1,
-            model.layer2,
-            model.layer3,
-            model.layer4
+        model = timm.create_model(
+            "seresnet50",
+            pretrained=True
         )
-        self.avgpool = model.avg_pool
-        self.dropout = model.dropout
-        self.fc = nn.Linear(2048, num_classes)
+        self.backbone = nn.Sequential(*list(model.children())[:-1])
+        self.fc = nn.Linear(model.fc.in_features, num_classes)
 
     def forward(self, x):
-        x = self.features(x)
-        x = self.avgpool(x)
-        if self.dropout is not None:
-            x = self.dropout(x)
-        x = x.view(x.size(0), -1)
+        x = self.backbone(x)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
-
-
-# ============================================================
-# Example usage
-# ============================================================
-if __name__ == "__main__":
-    model = ResNet50(num_classes=2)
-    x = torch.randn(1, 3, 224, 224)
-    y = model(x)
-    print("Output shape:", y.shape)
