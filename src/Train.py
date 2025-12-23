@@ -17,9 +17,10 @@ parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--num_classes', type=int, default=2)
 parser.add_argument('--data_path', type=str, default='../input/roi-classification')
 parser.add_argument('--save_path', type=str, default='./checkpoints')
-parser.add_argument('--gpu', type=str, default='0')
+parser.add_argument('--gpu', type=str, default='0,1')  # dùng GPU 0 và 1
 args = parser.parse_args()
 
+# ---------------- Set CUDA devices ----------------
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -50,6 +51,11 @@ def build_model(name):
         raise ValueError("Unsupported model")
 
 model = build_model(args.model).to(device)
+
+# ---------------- Multi-GPU ----------------
+if torch.cuda.device_count() > 1:
+    print(f"Using {torch.cuda.device_count()} GPUs")
+    model = nn.DataParallel(model)
 
 # ---------------- Loss & Optimizer ----------------
 criterion = nn.CrossEntropyLoss()
@@ -99,7 +105,10 @@ for epoch in range(1, args.epochs + 1):
     # Save best model
     if auc > best_auc:
         best_auc = auc
-        torch.save(model.state_dict(), os.path.join(args.save_path, f"{args.model}_best.pth"))
+        if isinstance(model, nn.DataParallel):
+            torch.save(model.module.state_dict(), os.path.join(args.save_path, f"{args.model}_best.pth"))
+        else:
+            torch.save(model.state_dict(), os.path.join(args.save_path, f"{args.model}_best.pth"))
         print("✔ Best model saved")
 
 print("Training completed.")
