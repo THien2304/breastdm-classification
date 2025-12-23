@@ -1,8 +1,3 @@
-# ============================================================
-# File: models.py
-# Description: Define CNN models for BreastDM classification
-# Author: Student version (based on BreastDM paper)
-# ============================================================
 
 import torch
 import torch.nn as nn
@@ -16,9 +11,7 @@ from pretrainedmodels.models.resnext_features import (
 
 
 
-# ============================================================
 # 1. VGG16
-# ============================================================
 class VGG16(nn.Module):
     def __init__(self, num_classes=2):
         super(VGG16, self).__init__()
@@ -43,9 +36,7 @@ class VGG16(nn.Module):
         return x
 
 
-# ============================================================
 # 2. ResNet family
-# ============================================================
 class ResNet18(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
@@ -87,10 +78,7 @@ class ResNet101(nn.Module):
         x = self.fc(x)
         return x
 
-
-# ============================================================
 # 3. DenseNet
-# ============================================================
 class DenseNet169(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
@@ -128,9 +116,8 @@ class DenseNet201(nn.Module):
         return self.feature_map
 
 
-# ============================================================
+
 # 4. ResNeXt101
-# ============================================================
 class ResNeXt101(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
@@ -146,9 +133,8 @@ class ResNeXt101(nn.Module):
         return x
 
 
-# ============================================================
+
 # 5. SENet
-# ============================================================
 class SENet50(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
