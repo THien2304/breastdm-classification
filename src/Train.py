@@ -51,6 +51,8 @@ def build_model(name):
         return Models.SENet50(args.num_classes)
     if name == 'resnext101':
         return Models.ResNeXt101(args.num_classes)
+    if name == "vit7":
+        return VIT_model.ViT7_BreastDM(args.num_classes)
     else:
         raise ValueError("Unsupported model")
 
