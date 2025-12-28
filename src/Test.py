@@ -1,7 +1,11 @@
+
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"   
 import torch
 import argparse
 from sklearn.metrics import accuracy_score, roc_auc_score
+from tqdm import tqdm
+
 from data_loader import load_testing
 import Models
 import VIT_model
@@ -11,23 +15,24 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     '--data_path',
     type=str,
-    default='../input/roi-classification',
+    default='/kaggle/input/roi-classification',
     help='Root path of dataset'
 )
 parser.add_argument(
     '--checkpoint_path',
     type=str,
-    default='./Best_Models',
-    help='Path to a .pth file OR a folder containing .pth files'
+    default='Best_Models',
+    help='Folder containing best trained models (.pth)'
 )
-parser.add_argument('--batch_size', type=int, default=16)
-parser.add_argument('--gpu', type=str, default='0')
+parser.add_argument('--batch_size', type=int, default=64)
 args = parser.parse_args()
 
-# ---------------- Set device ----------------
-os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+# ---------------- Device ----------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+print("Using device:", device)
+print("CUDA available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
 
 # ---------------- Load test data ----------------
 test_loader, test_filenames, test_labels = load_testing(
@@ -35,9 +40,10 @@ test_loader, test_filenames, test_labels = load_testing(
     phase='test',
     batch_size=args.batch_size
 )
+
 print(f"Test set loaded: {len(test_labels)} images")
 
-# ---------------- Helper: map filename to model architecture ----------------
+# ---------------- Build model from filename ----------------
 def build_model_from_filename(filename, num_classes=2):
     fname = filename.lower()
     if 'resnet18' in fname:
@@ -59,58 +65,42 @@ def build_model_from_filename(filename, num_classes=2):
     elif 'vit7' in fname:
         return VIT_model.ViT7_BreastDM(num_classes)
     else:
-        raise ValueError(f"❌ Cannot determine model architecture from filename: {filename}")
+        raise ValueError(f"Unknown model type for file: {filename}")
 
-# ---------------- Resolve checkpoint(s) ----------------
-checkpoint_files = []
+# ---------------- Load checkpoints ----------------
+assert os.path.exists(args.checkpoint_path), \
+    f"Checkpoint folder not found: {args.checkpoint_path}"
 
-if os.path.isfile(args.checkpoint_path):
-    # Case 1: single model file
-    if args.checkpoint_path.endswith('.pth'):
-        checkpoint_files = [args.checkpoint_path]
-    else:
-        raise ValueError("❌ Checkpoint file must be a .pth file")
+checkpoint_files = [
+    f for f in os.listdir(args.checkpoint_path)
+    if f.endswith('.pth')
+]
+checkpoint_files.sort()
 
-elif os.path.isdir(args.checkpoint_path):
-    # Case 2: folder of models
-    checkpoint_files = [
-        os.path.join(args.checkpoint_path, f)
-        for f in os.listdir(args.checkpoint_path)
-        if f.endswith('.pth')
-    ]
-    checkpoint_files.sort()
-else:
-    raise FileNotFoundError(f"❌ Checkpoint path not found: {args.checkpoint_path}")
+print(f"Found {len(checkpoint_files)} model(s)")
 
-if len(checkpoint_files) == 0:
-    raise RuntimeError("❌ No .pth model found!")
-
-print(f"Found {len(checkpoint_files)} model(s) to evaluate")
-
-# ---------------- Evaluate models ----------------
+# ---------------- Evaluation ----------------
 results = []
 
-for model_path in checkpoint_files:
-    ckpt_name = os.path.basename(model_path)
-    print(f"\n🚀 Evaluating {ckpt_name}")
+for ckpt in checkpoint_files:
+    print(f"\n===== Evaluating {ckpt} =====")
+    model_path = os.path.join(args.checkpoint_path, ckpt)
 
-    # Build model
-    model = build_model_from_filename(ckpt_name, num_classes=2)
-
-    # Load weights
-    state_dict = torch.load(model_path, map_location=device)
-    model.load_state_dict(state_dict)
+    # build model
+    model = build_model_from_filename(ckpt, num_classes=2)
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
     model.eval()
 
-    # Inference
-    all_preds, all_probs = [], []
+    all_preds = []
+    all_probs = []
 
     with torch.no_grad():
-        for images, labels in test_loader:
+        pbar = tqdm(test_loader, desc=f"Testing {ckpt}")
+        for images, labels in pbar:
             images = images.to(device)
-            outputs = model(images)
 
+            outputs = model(images)
             probs = torch.softmax(outputs, dim=1)
             preds = torch.argmax(probs, dim=1)
 
@@ -120,16 +110,15 @@ for model_path in checkpoint_files:
     acc = accuracy_score(test_labels, all_preds)
     auc = roc_auc_score(test_labels, all_probs)
 
-    print(f"✅ Test Accuracy: {acc:.4f}")
-    print(f"✅ Test AUC     : {auc:.4f}")
+    print(f"Test Accuracy: {acc:.4f}")
+    print(f"Test AUC     : {auc:.4f}")
 
-    results.append((ckpt_name, acc, auc))
+    results.append((ckpt, acc, auc))
 
 # ---------------- Summary ----------------
 results.sort(key=lambda x: x[2], reverse=True)
 
-print("\n================== FINAL SUMMARY (Sorted by AUC) ==================")
-print(f"{'Model':30s} {'Accuracy':>10s} {'AUC':>10s}")
-print("-" * 55)
+print("\n========== FINAL SUMMARY (Sorted by AUC) ==========")
+print(f"{'Model':35s} {'Accuracy':>10s} {'AUC':>10s}")
 for ckpt, acc, auc in results:
-    print(f"{ckpt:30s} {acc:10.4f} {auc:10.4f}")
+    print(f"{ckpt:35s} {acc:10.4f} {auc:10.4f}")
