@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from functools import partial
+from torchvision.models import vit_b_16, ViT_B_16_Weights
 
 # ---------------- DropPath ----------------
 def drop_path(x, drop_prob: float = 0., training: bool = False):
@@ -139,21 +139,28 @@ class ViT7_BreastDM(nn.Module):
         return self.head(x)
 
 
-# ---------------- Load pretrained ViT-B/16 ----------------
-def load_pretrained_vit7(model, pretrained_path):
-    checkpoint = torch.load(pretrained_path, map_location="cpu")
-    state_dict = checkpoint.get("state_dict", checkpoint)
+# ---------------- Load pretrained ViT-B/16 (from torchvision) ----------------
+def load_pretrained_vit7(model):
+    """
+    Load pretrained ViT-B/16 (first 7 blocks) from torchvision.
+    No need to upload any file.
+    """
+    print("🔹 Loading pretrained ViT-B/16 from torchvision ...")
+    pretrained = vit_b_16(weights=ViT_B_16_Weights.IMAGENET1K_V1)
+    state_dict = pretrained.state_dict()
 
     model_dict = model.state_dict()
     load_dict = {}
 
     for k, v in state_dict.items():
-        if "head" in k:
-            continue
+        # chỉ lấy 7 block đầu
         if k.startswith("blocks."):
             block_id = int(k.split(".")[1])
             if block_id >= 7:
                 continue
+        # bỏ qua cls_token, pos_embed, head
+        if "cls_token" in k or "pos_embed" in k or "head" in k:
+            continue
         if k in model_dict and model_dict[k].shape == v.shape:
             load_dict[k] = v
 
