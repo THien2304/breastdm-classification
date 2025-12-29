@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
+from torchvision import transforms
 
 import data_loader
 import Models
@@ -25,6 +26,21 @@ args = parser.parse_args()
 # ---------------- CUDA ----------------
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# ---------------- Data transforms ----------------
+train_transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(20),
+    transforms.ColorJitter(brightness=0.1, contrast=0.1),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+])
+
+val_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+])
 
 # ---------------- Load Data ----------------
 train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size)
@@ -58,7 +74,7 @@ model = build_model(args.model)
 # ---------------- Load pretrained ViT ----------------
 if args.model.lower() == 'vit7':
     print("🔹 Loading pretrained ViT-B/16...")
-    VIT_model.load_pretrained_vit7(model)
+    VIT_model.load_pretrained_vit7(model)  # Không cần truyền path
 
     # Fine-tune last 2 blocks + head
     for name, param in model.named_parameters():
@@ -107,10 +123,12 @@ for epoch in range(1, args.epochs + 1):
 
         optimizer.zero_grad()
 
+        # ---------------- Forward ----------------
         if args.model.lower() == 'vit7':
-            # Forward features per-image
-            features = model.forward_features(images)  # [batch, embed_dim]
-            outputs = model.head(features)  # batch-wise
+            # Nếu model là DataParallel, gọi module.forward_features()
+            m = model.module if isinstance(model, nn.DataParallel) else model
+            features = m.forward_features(images)
+            outputs = m.head(features)
         else:
             outputs = model(images)
 
@@ -133,8 +151,9 @@ for epoch in range(1, args.epochs + 1):
             images, labels = images.to(device), labels.to(device)
 
             if args.model.lower() == 'vit7':
-                features = model.forward_features(images)
-                outputs = model.head(features)
+                m = model.module if isinstance(model, nn.DataParallel) else model
+                features = m.forward_features(images)
+                outputs = m.head(features)
             else:
                 outputs = model(images)
 
