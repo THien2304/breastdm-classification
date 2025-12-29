@@ -28,7 +28,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ---------------- Load Data ----------------
 train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size)
-val_loader, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size)
+val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size)
 
 # ---------------- Build Model ----------------
 def build_model(name):
@@ -58,9 +58,9 @@ model = build_model(args.model)
 # ---------------- Load pretrained ViT ----------------
 if args.model.lower() == 'vit7':
     print("🔹 Loading pretrained ViT-B/16...")
-    VIT_model.load_pretrained_vit7(model)  # Không cần truyền path
+    VIT_model.load_pretrained_vit7(model)
 
-    # Chỉ fine-tune last 2 blocks + head
+    # Fine-tune last 2 blocks + head
     for name, param in model.named_parameters():
         if "blocks.5" not in name and "blocks.6" not in name and "head" not in name:
             param.requires_grad = False
@@ -110,9 +110,7 @@ for epoch in range(1, args.epochs + 1):
         if args.model.lower() == 'vit7':
             # Forward features per-image
             features = model.forward_features(images)  # [batch, embed_dim]
-            # MIL: global pooling per-case
-            case_feature = features.mean(dim=0, keepdim=True)
-            outputs = model.head(case_feature)
+            outputs = model.head(features)  # batch-wise
         else:
             outputs = model(images)
 
@@ -136,8 +134,7 @@ for epoch in range(1, args.epochs + 1):
 
             if args.model.lower() == 'vit7':
                 features = model.forward_features(images)
-                case_feature = features.mean(dim=0, keepdim=True)
-                outputs = model.head(case_feature)
+                outputs = model.head(features)
             else:
                 outputs = model(images)
 
