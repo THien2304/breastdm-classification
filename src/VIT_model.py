@@ -128,22 +128,25 @@ class ViT7_BreastDM(nn.Module):
             nn.init.ones_(m.weight)
             nn.init.zeros_(m.bias)
 
-    def forward(self, x):
+    # ---------------- Forward features ----------------
+    def forward_features(self, x):
         x = self.patch_embed(x)
         cls_token = self.cls_token.expand(x.size(0), -1, -1)
         x = torch.cat((cls_token, x), dim=1)
         x = x + self.pos_embed
         x = self.blocks(x)
         x = self.norm(x)
-        x = x[:, 0]
-        return self.head(x)
+        return x[:, 0]  # chỉ lấy CLS token
+
+    def forward(self, x):
+        features = self.forward_features(x)
+        return self.head(features)
 
 
 # ---------------- Load pretrained ViT-B/16 (from torchvision) ----------------
 def load_pretrained_vit7(model):
     """
     Load pretrained ViT-B/16 (first 7 blocks) from torchvision.
-    No need to upload any file.
     """
     print("🔹 Loading pretrained ViT-B/16 from torchvision ...")
     pretrained = vit_b_16(weights=ViT_B_16_Weights.IMAGENET1K_V1)
