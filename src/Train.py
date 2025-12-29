@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
-from torchvision import transforms
 
 import data_loader
 import Models
@@ -27,24 +26,9 @@ args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ---------------- Data transforms ----------------
-train_transform = transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
-    transforms.RandomRotation(20),
-    transforms.ColorJitter(brightness=0.1, contrast=0.1),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-])
-
-val_transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-])
-
 # ---------------- Load Data ----------------
-train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size, transform=train_transform)
-val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size, transform=val_transform)
+train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size)
+val_loader, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size)
 
 # ---------------- Build Model ----------------
 def build_model(name):
@@ -67,16 +51,16 @@ def build_model(name):
         return Models.ResNeXt101(args.num_classes)
     if name == 'vit7':
         return VIT_model.ViT7_BreastDM(num_classes=args.num_classes)
-    raise ValueError(f"❌ Unsupported model: {name}")
+    raise ValueError(f"Unsupported model: {name}")
 
 model = build_model(args.model)
 
 # ---------------- Load pretrained ViT ----------------
 if args.model.lower() == 'vit7':
-    print("🔹 Loading pretrained ViT-B/16 from torchvision ...")
-    VIT_model.load_pretrained_vit7(model)
+    print("🔹 Loading pretrained ViT-B/16...")
+    VIT_model.load_pretrained_vit7(model)  # Không cần truyền path
 
-    # Unfreeze last 2 blocks + head
+    # Chỉ fine-tune last 2 blocks + head
     for name, param in model.named_parameters():
         if "blocks.5" not in name and "blocks.6" not in name and "head" not in name:
             param.requires_grad = False
@@ -107,7 +91,7 @@ else:
     )
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
-# ---------------- Training Loop (per-case MIL) ----------------
+# ---------------- Training Loop ----------------
 os.makedirs(args.save_path, exist_ok=True)
 best_auc = 0.0
 
@@ -148,8 +132,7 @@ for epoch in range(1, args.epochs + 1):
 
     with torch.no_grad():
         for images, labels in val_loader:
-            images = images.to(device)
-            labels = labels.to(device)
+            images, labels = images.to(device), labels.to(device)
 
             if args.model.lower() == 'vit7':
                 features = model.forward_features(images)
