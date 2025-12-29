@@ -20,11 +20,6 @@ parser.add_argument('--num_classes', type=int, default=2)
 parser.add_argument('--data_path', type=str, default='../input/roi-classification')
 parser.add_argument('--save_path', type=str, default='./checkpoints')
 parser.add_argument('--gpu', type=str, default='0')
-parser.add_argument(
-    '--pretrained_vit',
-    type=str,
-    default='../input/vit-b16/pytorch_model.bin'
-)
 args = parser.parse_args()
 
 # ---------------- CUDA ----------------
@@ -32,13 +27,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ---------------- Load Data ----------------
-train_loader = data_loader.load_training(
-    args.data_path, 'train', args.batch_size
-)
-
-val_loader, val_filenames, val_labels = data_loader.load_testing(
-    args.data_path, 'val', args.batch_size
-)
+train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size)
+val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size)
 
 # ---------------- Build Model ----------------
 def build_model(name):
@@ -46,42 +36,33 @@ def build_model(name):
 
     if name == 'resnet18':
         return Models.ResNet18(args.num_classes)
-
     if name == 'resnet50':
         return Models.ResNet50(args.num_classes)
-
     if name == 'resnet101':
         return Models.ResNet101(args.num_classes)
-
     if name == 'densenet169':
         return Models.DenseNet169(args.num_classes)
-
     if name == 'densenet201':
         return Models.DenseNet201(args.num_classes)
-
     if name == 'vgg16':
         return Models.VGG16(args.num_classes)
-
     if name == 'senet50':
         return Models.SENet50(args.num_classes)
-
     if name == 'resnext101':
         return Models.ResNeXt101(args.num_classes)
-
     if name == 'vit7':
         return VIT_model.ViT7_BreastDM(num_classes=args.num_classes)
 
     raise ValueError(f"❌ Unsupported model: {name}")
 
-
 model = build_model(args.model)
 
 # ---------------- Load pretrained for ViT ----------------
 if args.model.lower() == 'vit7':
-    print("🔹 Loading pretrained ViT-B/16...")
-    VIT_model.load_pretrained_vit7(model, args.pretrained_vit)
+    print("🔹 Loading pretrained ViT-B/16 from torchvision ...")
+    VIT_model.load_pretrained_vit7(model)
 
-    # Freeze backbone (VERY IMPORTANT)
+    # Freeze backbone except head
     for name, param in model.named_parameters():
         if "head" not in name:
             param.requires_grad = False
@@ -95,7 +76,7 @@ if torch.cuda.device_count() > 1:
 # ---------------- Loss ----------------
 criterion = nn.CrossEntropyLoss()
 
-# ---------------- Optimizer ----------------
+# ---------------- Optimizer & Scheduler ----------------
 if args.model.lower() == 'vit7':
     optimizer = optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -116,7 +97,7 @@ else:
         optimizer, step_size=10, gamma=0.1
     )
 
-# ---------------- Training ----------------
+# ---------------- Training Loop ----------------
 os.makedirs(args.save_path, exist_ok=True)
 best_auc = 0.0
 
@@ -124,11 +105,8 @@ for epoch in range(1, args.epochs + 1):
     model.train()
     train_loss = 0.0
 
-    pbar = tqdm(
-        enumerate(train_loader),
-        total=len(train_loader),
-        desc=f"Epoch {epoch}/{args.epochs}"
-    )
+    pbar = tqdm(enumerate(train_loader), total=len(train_loader),
+                desc=f"Epoch {epoch}/{args.epochs}")
 
     for step, (images, labels) in pbar:
         images, labels = images.to(device), labels.to(device)
@@ -143,7 +121,6 @@ for epoch in range(1, args.epochs + 1):
         pbar.set_postfix(loss=f"{loss.item():.4f}")
 
     scheduler.step()
-
     print(f"[Epoch {epoch}] Train Loss: {train_loss / len(train_loader):.4f}")
 
     # ---------------- Validation ----------------
@@ -155,31 +132,21 @@ for epoch in range(1, args.epochs + 1):
             images = images.to(device)
             outputs = model(images)
             softmax_out = torch.softmax(outputs, dim=1)
-
-            preds.extend(
-                torch.argmax(softmax_out, dim=1).cpu().numpy()
-            )
-            probs.extend(
-                softmax_out[:, 1].cpu().numpy()
-            )
+            preds.extend(torch.argmax(softmax_out, dim=1).cpu().numpy())
+            probs.extend(softmax_out[:, 1].cpu().numpy())
 
     acc = accuracy_score(val_labels, preds)
     auc = roc_auc_score(val_labels, probs)
-
     print(f"[Epoch {epoch}] Val Acc: {acc:.4f} | AUC: {auc:.4f}")
 
     # ---------------- Save best ----------------
     if auc > best_auc:
         best_auc = auc
-        save_path = os.path.join(
-            args.save_path, f"{args.model}_best.pth"
-        )
-
+        save_path = os.path.join(args.save_path, f"{args.model}_best.pth")
         if isinstance(model, nn.DataParallel):
             torch.save(model.module.state_dict(), save_path)
         else:
             torch.save(model.state_dict(), save_path)
-
         print("✔ Best model saved")
 
 print("✅ Training completed.")
