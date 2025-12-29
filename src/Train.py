@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
+from torchvision import transforms
 
 import data_loader
 import Models
@@ -12,10 +13,10 @@ import VIT_model
 
 # ---------------- Argument parser ----------------
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, default='resnet50')
+parser.add_argument('--model', type=str, default='vit7')
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--epochs', type=int, default=50)
-parser.add_argument('--lr', type=float, default=3e-4)
+parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--num_classes', type=int, default=2)
 parser.add_argument('--data_path', type=str, default='../input/roi-classification')
 parser.add_argument('--save_path', type=str, default='./checkpoints')
@@ -26,14 +27,28 @@ args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# ---------------- Data transforms ----------------
+train_transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(20),
+    transforms.ColorJitter(brightness=0.1, contrast=0.1),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+])
+
+val_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+])
+
 # ---------------- Load Data ----------------
-train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size)
-val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size)
+train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size, transform=train_transform)
+val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size, transform=val_transform)
 
 # ---------------- Build Model ----------------
 def build_model(name):
     name = name.lower()
-
     if name == 'resnet18':
         return Models.ResNet18(args.num_classes)
     if name == 'resnet50':
@@ -52,19 +67,18 @@ def build_model(name):
         return Models.ResNeXt101(args.num_classes)
     if name == 'vit7':
         return VIT_model.ViT7_BreastDM(num_classes=args.num_classes)
-
     raise ValueError(f"❌ Unsupported model: {name}")
 
 model = build_model(args.model)
 
-# ---------------- Load pretrained for ViT ----------------
+# ---------------- Load pretrained ViT ----------------
 if args.model.lower() == 'vit7':
     print("🔹 Loading pretrained ViT-B/16 from torchvision ...")
     VIT_model.load_pretrained_vit7(model)
 
-    # Freeze backbone except head
+    # Unfreeze last 2 blocks + head
     for name, param in model.named_parameters():
-        if "head" not in name:
+        if "blocks.5" not in name and "blocks.6" not in name and "head" not in name:
             param.requires_grad = False
 
 # ---------------- Multi-GPU ----------------
@@ -83,9 +97,7 @@ if args.model.lower() == 'vit7':
         lr=args.lr,
         weight_decay=1e-4
     )
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs
-    )
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 else:
     optimizer = optim.SGD(
         model.parameters(),
@@ -93,11 +105,9 @@ else:
         momentum=0.9,
         weight_decay=1e-2
     )
-    scheduler = optim.lr_scheduler.StepLR(
-        optimizer, step_size=10, gamma=0.1
-    )
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
-# ---------------- Training Loop ----------------
+# ---------------- Training Loop (per-case MIL) ----------------
 os.makedirs(args.save_path, exist_ok=True)
 best_auc = 0.0
 
@@ -112,7 +122,16 @@ for epoch in range(1, args.epochs + 1):
         images, labels = images.to(device), labels.to(device)
 
         optimizer.zero_grad()
-        outputs = model(images)
+
+        if args.model.lower() == 'vit7':
+            # Forward features per-image
+            features = model.forward_features(images)  # [batch, embed_dim]
+            # MIL: global pooling per-case
+            case_feature = features.mean(dim=0, keepdim=True)
+            outputs = model.head(case_feature)
+        else:
+            outputs = model(images)
+
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
@@ -130,7 +149,15 @@ for epoch in range(1, args.epochs + 1):
     with torch.no_grad():
         for images, labels in val_loader:
             images = images.to(device)
-            outputs = model(images)
+            labels = labels.to(device)
+
+            if args.model.lower() == 'vit7':
+                features = model.forward_features(images)
+                case_feature = features.mean(dim=0, keepdim=True)
+                outputs = model.head(case_feature)
+            else:
+                outputs = model(images)
+
             softmax_out = torch.softmax(outputs, dim=1)
             preds.extend(torch.argmax(softmax_out, dim=1).cpu().numpy())
             probs.extend(softmax_out[:, 1].cpu().numpy())
