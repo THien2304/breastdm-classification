@@ -2,9 +2,7 @@ import torch
 import torch.nn as nn
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 
-# =========================
-# DropPath (Stochastic Depth)
-# =========================
+# ---------------- DropPath ----------------
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
         return x
@@ -14,7 +12,6 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
     random_tensor.floor_()
     return x.div(keep_prob) * random_tensor
 
-
 class DropPath(nn.Module):
     def __init__(self, drop_prob=None):
         super().__init__()
@@ -23,97 +20,55 @@ class DropPath(nn.Module):
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
 
-
-# =========================
-# Patch Embedding
-# =========================
+# ---------------- Patch Embedding ----------------
 class PatchEmbed(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_c=3, embed_dim=768):
         super().__init__()
-        self.img_size = img_size
-        self.patch_size = patch_size
         self.num_patches = (img_size // patch_size) ** 2
-
-        self.proj = nn.Conv2d(
-            in_c, embed_dim,
-            kernel_size=patch_size,
-            stride=patch_size
-        )
-        self.norm = nn.LayerNorm(embed_dim)
+        self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, x):
-        # [B, C, H, W] -> [B, N, C]
         x = self.proj(x).flatten(2).transpose(1, 2)
-        x = self.norm(x)
         return x
 
-
-# =========================
-# Multi-head Attention
-# =========================
+# ---------------- Attention ----------------
 class Attention(nn.Module):
-    def __init__(
-        self,
-        dim,
-        num_heads=12,
-        qkv_bias=True,
-        attn_drop=0.1,
-        proj_drop=0.1,
-    ):
+    def __init__(self, dim, num_heads=12, qkv_bias=True):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x):
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(
-            B, N, 3, self.num_heads, C // self.num_heads
-        )
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        return self.proj(x)
 
-
-# =========================
-# MLP
-# =========================
+# ---------------- MLP ----------------
 class MLP(nn.Module):
-    def __init__(self, dim, mlp_ratio=4., drop=0.1):
+    def __init__(self, dim, mlp_ratio=4.):
         super().__init__()
         hidden = int(dim * mlp_ratio)
         self.fc1 = nn.Linear(dim, hidden)
         self.act = nn.GELU()
-        self.drop = nn.Dropout(drop)
         self.fc2 = nn.Linear(hidden, dim)
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop(x)
-        x = self.fc2(x)
-        x = self.drop(x)
-        return x
+        return self.fc2(self.act(self.fc1(x)))
 
-
-# =========================
-# Transformer Block
-# =========================
+# ---------------- Transformer Block ----------------
 class Block(nn.Module):
-    def __init__(self, dim, num_heads, drop_path=0.1):
+    def __init__(self, dim, num_heads, drop_path=0.):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
         self.attn = Attention(dim, num_heads)
@@ -126,10 +81,7 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
-
-# =========================
-# ViT-7 for BreastDM
-# =========================
+# ---------------- ViT-7 BreastDM ----------------
 class ViT7_BreastDM(nn.Module):
     def __init__(
         self,
@@ -143,21 +95,15 @@ class ViT7_BreastDM(nn.Module):
     ):
         super().__init__()
 
-        self.patch_embed = PatchEmbed(
-            img_size, patch_size, 3, embed_dim
-        )
+        self.patch_embed = PatchEmbed(img_size, patch_size, 3, embed_dim)
         num_patches = self.patch_embed.num_patches
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, embed_dim)
-        )
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.pos_drop = nn.Dropout(p=0.1)
 
         dpr = torch.linspace(0, drop_path_rate, depth)
-        self.blocks = nn.Sequential(
-            *[Block(embed_dim, num_heads, dpr[i]) for i in range(depth)]
-        )
+        self.blocks = nn.Sequential(*[Block(embed_dim, num_heads, dpr[i]) for i in range(depth)])
 
         self.norm = nn.LayerNorm(embed_dim)
         self.head = nn.Linear(embed_dim, num_classes)
@@ -175,6 +121,7 @@ class ViT7_BreastDM(nn.Module):
             nn.init.ones_(m.weight)
             nn.init.zeros_(m.bias)
 
+    # ---------------- Forward features ----------------
     def forward_features(self, x):
         x = self.patch_embed(x)
         cls_token = self.cls_token.expand(x.size(0), -1, -1)
@@ -185,32 +132,39 @@ class ViT7_BreastDM(nn.Module):
         return x[:, 0]  # CLS token
 
     def forward(self, x):
-        x = self.forward_features(x)
-        return self.head(x)
+        features = self.forward_features(x)
+        return self.head(features)
 
-
-# =========================
-# Load pretrained ViT-B/16 (7 blocks)
-# =========================
+# ---------------- Load pretrained ViT-B/16 (first 7 blocks) ----------------
 def load_pretrained_vit7(model):
-    print("🔹 Loading pretrained ViT-B/16 (torchvision)...")
-    pretrained = vit_b_16(
-        weights=ViT_B_16_Weights.IMAGENET1K_V1
-    )
+    """
+    Load pretrained ViT-B/16 (first 7 blocks) from torchvision.
+    """
+    print("🔹 Loading pretrained ViT-B/16 from torchvision ...")
+    pretrained = vit_b_16(weights=ViT_B_16_Weights.IMAGENET1K_V1)
     state_dict = pretrained.state_dict()
     model_dict = model.state_dict()
     load_dict = {}
 
     for k, v in state_dict.items():
-        if k.startswith("blocks."):
-            block_id = int(k.split(".")[1])
+        # Map blocks: torchvision ViT-B/16: encoder.layers.N.* -> ViT7: blocks.N.*
+        if k.startswith("encoder.layers."):
+            block_id = int(k.split(".")[2])
             if block_id >= 7:
-                continue
+                continue  # chỉ load 7 block đầu
+            new_k = k.replace("encoder.layers.", "blocks.")
+            if new_k in model_dict and model_dict[new_k].shape == v.shape:
+                load_dict[new_k] = v
+            continue
+
+        # Bỏ qua cls_token, pos_embed, head
         if "cls_token" in k or "pos_embed" in k or "head" in k:
             continue
+
+        # Các layer khác (patch_embed, etc.)
         if k in model_dict and model_dict[k].shape == v.shape:
             load_dict[k] = v
 
     model_dict.update(load_dict)
     model.load_state_dict(model_dict)
-    print(f"✅ Loaded {len(load_dict)} layers from pretrained ViT-B/16")
+    print(f"✅ Loaded {len(load_dict)} layers from pretrained ViT-B/16 (first 7 blocks)")
