@@ -13,7 +13,7 @@ IMG_SIZE = 224
 def get_transforms(is_train=True):
     if is_train:
         return transforms.Compose([
-            transforms.Resize([256, 256]),
+            transforms.Resize((256, 256)),
             transforms.RandomCrop(IMG_SIZE),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
@@ -22,70 +22,57 @@ def get_transforms(is_train=True):
         ])
     else:
         return transforms.Compose([
-            transforms.Resize([IMG_SIZE, IMG_SIZE]),
+            transforms.Resize((IMG_SIZE, IMG_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize(NORM_MEAN, NORM_STD)
         ])
 
-# ---------------- Custom Dataset ----------------
+# ---------------- Dataset ----------------
 class CachedImageFolder(Dataset):
+    
     def __init__(self, root_dir, transform=None):
         self.samples = []
         self.labels = []
         self.transform = transform
 
         classes = sorted(os.listdir(root_dir))
-        self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(classes)}
+        self.class_to_idx = {cls: i for i, cls in enumerate(classes)}
 
-        # preload all images recursively
-        for cls_name in classes:
-            cls_path = os.path.join(root_dir, cls_name)
+        for cls in classes:
+            cls_path = os.path.join(root_dir, cls)
             for root, _, files in os.walk(cls_path):
-                for fname in files:
-                    if fname.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        img_path = os.path.join(root, fname)
-                        try:
-                            img = Image.open(img_path).convert('RGB')
-                            self.samples.append(img)
-                            self.labels.append(self.class_to_idx[cls_name])
-                        except:
-                            print(f"⚠ Failed to load image: {img_path}")
+                for f in files:
+                    if f.lower().endswith(('.jpg', '.png', '.jpeg')):
+                        self.samples.append(os.path.join(root, f))
+                        self.labels.append(self.class_to_idx[cls])
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img = self.samples[idx]
-        label = self.labels[idx]
+        img = Image.open(self.samples[idx]).convert("RGB")
         if self.transform:
             img = self.transform(img)
-        return img, label
+        return img, self.labels[idx]
 
 # ---------------- Loaders ----------------
 def load_training(root_path, phase='train', batch_size=32, num_workers=4, transform=None):
-    data_dir = os.path.join(root_path, phase)
     if transform is None:
-        transform = get_transforms(is_train=True)
-    dataset = CachedImageFolder(data_dir, transform=transform)
-    if len(dataset) == 0:
-        raise RuntimeError(f"No images found in {data_dir}")
-    loader = DataLoader(
+        transform = get_transforms(True)
+    dataset = CachedImageFolder(os.path.join(root_path, phase), transform)
+    return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=True,
-        drop_last=True,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        drop_last=True
     )
-    return loader
 
 def load_testing(root_path, phase='val', batch_size=32, num_workers=4, transform=None):
-    data_dir = os.path.join(root_path, phase)
     if transform is None:
-        transform = get_transforms(is_train=False)
-    dataset = CachedImageFolder(data_dir, transform=transform)
-    if len(dataset) == 0:
-        raise RuntimeError(f"No images found in {data_dir}")
+        transform = get_transforms(False)
+    dataset = CachedImageFolder(os.path.join(root_path, phase), transform)
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -93,6 +80,4 @@ def load_testing(root_path, phase='val', batch_size=32, num_workers=4, transform
         num_workers=num_workers,
         pin_memory=True
     )
-    filenames = [f"{cls}_{i}" for i, cls in enumerate(dataset.labels)]
-    labels = dataset.labels
-    return loader, filenames, labels
+    return loader, dataset.labels

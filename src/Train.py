@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
-from torchvision import transforms
 
 import data_loader
 import Models
@@ -27,46 +26,26 @@ args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ---------------- Data transforms ----------------
-train_transform = transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
-    transforms.RandomRotation(20),
-    transforms.ColorJitter(brightness=0.1, contrast=0.1),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-])
-
-val_transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-])
-
 # ---------------- Load Data ----------------
-train_loader = data_loader.load_training(args.data_path, 'train', args.batch_size)
-val_loader, val_filenames, val_labels = data_loader.load_testing(args.data_path, 'val', args.batch_size)
+train_loader = data_loader.load_training(
+    args.data_path, 'train', args.batch_size
+)
+val_loader, val_labels = data_loader.load_testing(
+    args.data_path, 'val', args.batch_size
+)
 
 # ---------------- Build Model ----------------
 def build_model(name):
     name = name.lower()
-    if name == 'resnet18':
-        return Models.ResNet18(args.num_classes)
-    if name == 'resnet50':
-        return Models.ResNet50(args.num_classes)
-    if name == 'resnet101':
-        return Models.ResNet101(args.num_classes)
-    if name == 'densenet169':
-        return Models.DenseNet169(args.num_classes)
-    if name == 'densenet201':
-        return Models.DenseNet201(args.num_classes)
-    if name == 'vgg16':
-        return Models.VGG16(args.num_classes)
-    if name == 'senet50':
-        return Models.SENet50(args.num_classes)
-    if name == 'resnext101':
-        return Models.ResNeXt101(args.num_classes)
-    if name == 'vit7':
-        return VIT_model.ViT7_BreastDM(num_classes=args.num_classes)
+    if name == 'resnet18': return Models.ResNet18(args.num_classes)
+    if name == 'resnet50': return Models.ResNet50(args.num_classes)
+    if name == 'resnet101': return Models.ResNet101(args.num_classes)
+    if name == 'densenet169': return Models.DenseNet169(args.num_classes)
+    if name == 'densenet201': return Models.DenseNet201(args.num_classes)
+    if name == 'vgg16': return Models.VGG16(args.num_classes)
+    if name == 'senet50': return Models.SENet50(args.num_classes)
+    if name == 'resnext101': return Models.ResNeXt101(args.num_classes)
+    if name == 'vit7': return VIT_model.ViT7_BreastDM(num_classes=args.num_classes)
     raise ValueError(f"Unsupported model: {name}")
 
 model = build_model(args.model)
@@ -74,12 +53,16 @@ model = build_model(args.model)
 # ---------------- Load pretrained ViT ----------------
 if args.model.lower() == 'vit7':
     print("🔹 Loading pretrained ViT-B/16...")
-    VIT_model.load_pretrained_vit7(model)  # Không cần truyền path
+    VIT_model.load_pretrained_vit7(model)
 
     # Fine-tune last 2 blocks + head
     for name, param in model.named_parameters():
-        if "blocks.5" not in name and "blocks.6" not in name and "head" not in name:
-            param.requires_grad = False
+        param.requires_grad = False
+    for blk in [5,6]:
+        for n,p in model.blocks[blk].named_parameters():
+            p.requires_grad = True
+    for n,p in model.head.named_parameters():
+        p.requires_grad = True
 
 # ---------------- Multi-GPU ----------------
 model = model.to(device)
@@ -99,12 +82,7 @@ if args.model.lower() == 'vit7':
     )
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 else:
-    optimizer = optim.SGD(
-        model.parameters(),
-        lr=0.01,
-        momentum=0.9,
-        weight_decay=1e-2
-    )
+    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-2)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
 # ---------------- Training Loop ----------------
@@ -114,18 +92,13 @@ best_auc = 0.0
 for epoch in range(1, args.epochs + 1):
     model.train()
     train_loss = 0.0
-
-    pbar = tqdm(enumerate(train_loader), total=len(train_loader),
-                desc=f"Epoch {epoch}/{args.epochs}")
+    pbar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch}/{args.epochs}")
 
     for step, (images, labels) in pbar:
         images, labels = images.to(device), labels.to(device)
-
         optimizer.zero_grad()
 
-        # ---------------- Forward ----------------
         if args.model.lower() == 'vit7':
-            # Nếu model là DataParallel, gọi module.forward_features()
             m = model.module if isinstance(model, nn.DataParallel) else model
             features = m.forward_features(images)
             outputs = m.head(features)
@@ -149,7 +122,6 @@ for epoch in range(1, args.epochs + 1):
     with torch.no_grad():
         for images, labels in val_loader:
             images, labels = images.to(device), labels.to(device)
-
             if args.model.lower() == 'vit7':
                 m = model.module if isinstance(model, nn.DataParallel) else model
                 features = m.forward_features(images)
@@ -165,7 +137,6 @@ for epoch in range(1, args.epochs + 1):
     auc = roc_auc_score(val_labels, probs)
     print(f"[Epoch {epoch}] Val Acc: {acc:.4f} | AUC: {auc:.4f}")
 
-    # ---------------- Save best ----------------
     if auc > best_auc:
         best_auc = auc
         save_path = os.path.join(args.save_path, f"{args.model}_best.pth")
