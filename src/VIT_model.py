@@ -147,12 +147,14 @@ def load_pretrained_vit7(model):
     load_dict = {}
 
     for k, v in state_dict.items():
-        # Map blocks: torchvision ViT-B/16: encoder.layers.N.* -> ViT7: blocks.N.*
-        if k.startswith("encoder.layers."):
-            block_id = int(k.split(".")[2])
-            if block_id >= 7:
-                continue  # chỉ load 7 block đầu
-            new_k = k.replace("encoder.layers.", "blocks.")
+        # Map first 7 blocks: encoder_layer_0 -> blocks.0
+        if k.startswith("encoder.encoder_layer_"):
+            # Lấy số block bằng cách cắt chữ số cuối
+            block_num_str = k.split("_")[-1]
+            block_num = int(block_num_str)
+            if block_num >= 7:
+                continue  # chỉ lấy 7 block đầu
+            new_k = k.replace(f"encoder.encoder_layer_{block_num}", f"blocks.{block_num}")
             if new_k in model_dict and model_dict[new_k].shape == v.shape:
                 load_dict[new_k] = v
             continue
@@ -161,10 +163,11 @@ def load_pretrained_vit7(model):
         if "cls_token" in k or "pos_embed" in k or "head" in k:
             continue
 
-        # Các layer khác (patch_embed, etc.)
+        # Các layer khác (patch_embed, norm, etc.)
         if k in model_dict and model_dict[k].shape == v.shape:
             load_dict[k] = v
 
     model_dict.update(load_dict)
     model.load_state_dict(model_dict)
     print(f"✅ Loaded {len(load_dict)} layers from pretrained ViT-B/16 (first 7 blocks)")
+
