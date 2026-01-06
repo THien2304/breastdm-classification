@@ -117,11 +117,12 @@ class SENet50(nn.Module):
     def __init__(self, num_classes=2, dropout_p=0.2):
         super().__init__()
         m = timm.create_model("seresnet50", pretrained=True)
-        self.backbone = m.forward_features
+        self.backbone = nn.Sequential(*list(m.children())[:-1])  
         self.dropout = nn.Dropout(dropout_p)
         self.fc = nn.Linear(m.num_features, num_classes)
 
     def forward(self, x):
         x = self.backbone(x)
+        x = torch.flatten(x, 1)
         x = self.dropout(x)
         return self.fc(x)
