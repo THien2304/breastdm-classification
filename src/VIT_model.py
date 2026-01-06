@@ -93,9 +93,9 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
-# ---------------- ViT7 for BreastDM ----------------
-class ViT7_BreastDM(nn.Module):
-    def __init__(self, num_classes=2, img_size=224, patch_size=16, embed_dim=768, depth=7, num_heads=12, drop_path_rate=0.1):
+# ---------------- Full ViT-B/16 for BreastDM ----------------
+class ViT_BreastDM(nn.Module):
+    def __init__(self, num_classes=2, img_size=224, patch_size=16, embed_dim=768, depth=12, num_heads=12, drop_path_rate=0.1):
         super().__init__()
         self.patch_embed = PatchEmbed(img_size, patch_size, 3, embed_dim)
         num_patches = self.patch_embed.num_patches
@@ -135,25 +135,21 @@ class ViT7_BreastDM(nn.Module):
         x = self.forward_features(x)
         return self.head(x)
 
-# ---------------- Load pretrained ViT7 (first 7 blocks) ----------------
-def load_pretrained_vit7(model):
-    print("🔹 Loading pretrained ViT-B/16 from timm ...")
+# ---------------- Load pretrained ViT-B/16 ----------------
+def load_pretrained_vit_full(model):
+    print("🔹 Loading full pretrained ViT-B/16 from timm ...")
     pretrained = timm.create_model("vit_base_patch16_224", pretrained=True)
     pretrained_state = pretrained.state_dict()
     model_state = model.state_dict()
     load_dict = {}
 
-    # Map first 7 blocks
     for k,v in pretrained_state.items():
-        # Only load first 7 blocks
-        if k.startswith("blocks.") and int(k.split(".")[1]) >= 7:
-            continue
-        # cls_token, pos_embed, head bỏ qua
-        if "cls_token" in k or "pos_embed" in k or "head" in k:
+        # skip head only
+        if "head" in k:
             continue
         if k in model_state and model_state[k].shape == v.shape:
             load_dict[k] = v
 
     model_state.update(load_dict)
     model.load_state_dict(model_state)
-    print(f"✅ Loaded {len(load_dict)} layers from pretrained ViT-B/16 (first 7 blocks)")
+    print(f"✅ Loaded {len(load_dict)} layers from full pretrained ViT-B/16")
