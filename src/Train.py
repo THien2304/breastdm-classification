@@ -41,8 +41,8 @@ def build_model(name):
     if name == 'vgg16': return Models.VGG16(args.num_classes)
     if name == 'senet50': return Models.SENet50(args.num_classes)
     if name == 'resnext101': return Models.ResNeXt101(args.num_classes)
-    if name in ['vit7', 'vit_full']: 
-        return VIT_model.ViT_BreastDM(num_classes=args.num_classes, depth=12)  # full 12 blocks
+    if name in ['vit7', 'vit_full']:
+        return VIT_model.ViT_BreastDM(num_classes=args.num_classes, depth=12)
     raise ValueError(f"Unsupported model: {name}")
 
 model = build_model(args.model)
