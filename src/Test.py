@@ -3,10 +3,10 @@ import torch
 import argparse
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
+import timm
 
 from data_loader import load_testing
 import Models
-import VIT_model
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_path', type=str, default='../input/roi-classification')
@@ -20,7 +20,7 @@ print("Using device:", device)
 test_loader, test_labels = load_testing(args.data_path, 'test', args.batch_size)
 print(f"Test set loaded: {len(test_labels)} images")
 
-# ---------------- Build model from filename ----------------
+# ---------------- Build model from checkpoint filename ----------------
 def build_model_from_filename(filename, num_classes=2):
     fname = filename.lower()
 
@@ -34,14 +34,8 @@ def build_model_from_filename(filename, num_classes=2):
     if 'resnext101' in fname: return Models.ResNeXt101(num_classes)
 
     if 'vit' in fname:
-        return VIT_model.ViT_BreastDM(
-            img_size=224,
-            patch_size=16,
-            embed_dim=768,
-            depth=12,
-            num_heads=12,
-            num_classes=num_classes
-        )
+        model = timm.create_model('vit_base_patch16_224', pretrained=False, num_classes=num_classes)
+        return model
 
     raise ValueError(f"Unknown model type: {filename}")
 

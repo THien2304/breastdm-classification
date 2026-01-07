@@ -5,10 +5,10 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
+import timm
 
 import data_loader
 import Models
-import VIT_model
 
 # ---------------- Argument parser ----------------
 parser = argparse.ArgumentParser()
@@ -41,35 +41,29 @@ def build_model(name):
     if name == 'vgg16': return Models.VGG16(args.num_classes)
     if name == 'senet50': return Models.SENet50(args.num_classes)
     if name == 'resnext101': return Models.ResNeXt101(args.num_classes)
-
+    
     if name in ['vit', 'vit_full']:
-        return VIT_model.ViT_BreastDM(
-            img_size=224,
-            patch_size=16,
-            embed_dim=768,
-            depth=12,
-            num_heads=12,
-            num_classes=args.num_classes
-        )
+        # Load pretrained ViT-B/16 từ timm
+        model = timm.create_model('vit_base_patch16_224', pretrained=True, num_classes=args.num_classes)
+        return model
 
     raise ValueError(f"Unsupported model: {name}")
 
 model = build_model(args.model)
 
-# ---------------- Load pretrained ViT ----------------
+# ---------------- Freeze / Fine-tune ----------------
 if args.model.lower() in ['vit', 'vit_full']:
-    print("🔹 Loading pretrained ViT-B/16...")
-    VIT_model.load_pretrained_vit_full(model)
-
+    print("🔹 Freezing pretrained ViT-B/16 blocks 0-7, fine-tuning 8-11 + head")
     # Freeze all
     for p in model.parameters():
         p.requires_grad = False
 
-    # Fine-tune last 4 blocks + head
-    for blk in [8, 9, 10, 11]:
+    # Fine-tune last 4 transformer blocks
+    for blk in range(8, 12):
         for p in model.blocks[blk].parameters():
             p.requires_grad = True
 
+    # Fine-tune head
     for p in model.head.parameters():
         p.requires_grad = True
 
@@ -83,12 +77,9 @@ if torch.cuda.device_count() > 1:
 criterion = nn.CrossEntropyLoss()
 
 # ---------------- Optimizer & Scheduler ----------------
-if args.model.lower() in ['vit7', 'vit_full']:
-    optimizer = optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=args.lr,
-        weight_decay=1e-4
-    )
+if args.model.lower() in ['vit', 'vit_full']:
+    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
+                            lr=args.lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 else:
     optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-2)
