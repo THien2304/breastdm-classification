@@ -125,7 +125,7 @@ class PatchEmbed(nn.Module):
 
 
 # ---------------- Vision Transformer ----------------
-class VisionTransformer(nn.Module):
+class ViT_BreastDM(nn.Module):
     def __init__(
         self,
         img_size=224,
@@ -218,7 +218,7 @@ class VisionTransformer(nn.Module):
 
 
 def vit_base_patch16_224(num_classes=2, pretrained=False):
-    model = VisionTransformer(
+    model = ViT_BreastDM(
         img_size=224,
         patch_size=16,
         embed_dim=768,
