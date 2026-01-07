@@ -23,16 +23,27 @@ print(f"Test set loaded: {len(test_labels)} images")
 # ---------------- Build model from filename ----------------
 def build_model_from_filename(filename, num_classes=2):
     fname = filename.lower()
+
     if 'resnet18' in fname: return Models.ResNet18(num_classes)
-    elif 'resnet50' in fname: return Models.ResNet50(num_classes)
-    elif 'resnet101' in fname: return Models.ResNet101(num_classes)
-    elif 'densenet169' in fname: return Models.DenseNet169(num_classes)
-    elif 'densenet201' in fname: return Models.DenseNet201(num_classes)
-    elif 'vgg16' in fname: return Models.VGG16(num_classes)
-    elif 'senet50' in fname: return Models.SENet50(num_classes)
-    elif 'resnext101' in fname: return Models.ResNeXt101(num_classes)
-    elif 'vit' in fname: return VIT_model.ViT_BreastDM(num_classes)
-    else: raise ValueError(f"Unknown model type: {filename}")
+    if 'resnet50' in fname: return Models.ResNet50(num_classes)
+    if 'resnet101' in fname: return Models.ResNet101(num_classes)
+    if 'densenet169' in fname: return Models.DenseNet169(num_classes)
+    if 'densenet201' in fname: return Models.DenseNet201(num_classes)
+    if 'vgg16' in fname: return Models.VGG16(num_classes)
+    if 'senet50' in fname: return Models.SENet50(num_classes)
+    if 'resnext101' in fname: return Models.ResNeXt101(num_classes)
+
+    if 'vit' in fname:
+        return VIT_model.ViT_BreastDM(
+            img_size=224,
+            patch_size=16,
+            embed_dim=768,
+            depth=12,
+            num_heads=12,
+            num_classes=num_classes
+        )
+
+    raise ValueError(f"Unknown model type: {filename}")
 
 # ---------------- Load checkpoints ----------------
 checkpoint_files = sorted([f for f in os.listdir(args.checkpoint_path) if f.endswith('.pth')])
@@ -42,6 +53,7 @@ results = []
 
 for ckpt in checkpoint_files:
     print(f"\n===== Evaluating {ckpt} =====")
+
     model = build_model_from_filename(ckpt, num_classes=2)
     model.load_state_dict(torch.load(os.path.join(args.checkpoint_path, ckpt), map_location=device))
     model.to(device)
@@ -62,10 +74,12 @@ for ckpt in checkpoint_files:
     acc = accuracy_score(test_labels, all_preds)
     auc = roc_auc_score(test_labels, all_probs)
     print(f"Test Accuracy: {acc:.4f} | Test AUC: {auc:.4f}")
+
     results.append((ckpt, acc, auc))
 
 # ---------------- Summary ----------------
 results.sort(key=lambda x: x[2], reverse=True)
+
 print("\n========== FINAL SUMMARY ==========")
 print(f"{'Model':35s} {'Accuracy':>10s} {'AUC':>10s}")
 for ckpt, acc, auc in results:
