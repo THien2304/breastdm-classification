@@ -30,7 +30,7 @@ def build_model_from_filename(filename, num_classes=2):
     elif 'vgg16' in fname: return Models.VGG16(num_classes)
     elif 'senet50' in fname: return Models.SENet50(num_classes)
     elif 'resnext101' in fname: return Models.ResNeXt101(num_classes)
-    elif 'vit7' in fname: return VIT_model.ViT7_BreastDM(num_classes)
+    elif 'vit7' in fname: return VIT_model.ViT_BreastDM(num_classes)
     else: raise ValueError(f"Unknown model type for file: {filename}")
 
 assert os.path.exists(args.checkpoint_path), f"Checkpoint folder not found: {args.checkpoint_path}"
