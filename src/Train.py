@@ -13,7 +13,7 @@ import Models
 # ---------------- Argument parser ----------------
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='vit_full')
-parser.add_argument('--batch_size', type=int, default=16)
+parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--epochs', type=int, default=50)
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--num_classes', type=int, default=2)

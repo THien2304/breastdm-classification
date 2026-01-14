@@ -116,13 +116,16 @@ class ResNeXt101(nn.Module):
 class SENet50(nn.Module):
     def __init__(self, num_classes=2, dropout_p=0.2):
         super().__init__()
-        m = timm.create_model("seresnet50", pretrained=True)
-        self.backbone = nn.Sequential(*list(m.children())[:-1])  
+        self.backbone = timm.create_model(
+            "seresnet50",
+            pretrained=True,
+            num_classes=0,
+            global_pool="avg"   
+        )
         self.dropout = nn.Dropout(dropout_p)
-        self.fc = nn.Linear(m.num_features, num_classes)
-
+        self.fc = nn.Linear(self.backbone.num_features, num_classes)
     def forward(self, x):
-        x = self.backbone(x)
-        x = torch.flatten(x, 1)
+        x = self.backbone(x)     
         x = self.dropout(x)
-        return self.fc(x)
+        x = self.fc(x)
+        return x
