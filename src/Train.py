@@ -9,7 +9,7 @@ import timm
 
 import data_loader
 import Models
-
+import Fusion_model
 # ---------------- Argument parser ----------------
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='vit_full')
@@ -41,6 +41,7 @@ def build_model(name):
     if name == 'vgg16': return Models.VGG16(args.num_classes)
     if name == 'senet50': return Models.SENet50(args.num_classes)
     if name == 'resnext101': return Models.ResNeXt101(args.num_classes)
+    if name == "Fusion_model": return Fusion_model.FusionModel(args.num_classes)
     
     if name in ['vit', 'vit_full']:
         # Load pretrained ViT-B/16 từ timm
