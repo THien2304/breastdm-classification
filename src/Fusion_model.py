@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from Models import SENet50
-from VIT_model import ViT7_BreastDM
+from VIT_model import ViT_BreastDM
 
 
 # FCUUp: ViT tokens -> CNN feature map
@@ -75,7 +75,7 @@ class FusionModel(nn.Module):
         cnn_channels = 512
 
         # -------- ViT branch --------
-        self.vit = ViT7_BreastDM(num_classes=num_classes)
+        self.vit = ViT_BreastDM(num_classes=num_classes)
 
         # -------- ViT -> CNN --------
         self.fcu_up = FCUUp(
